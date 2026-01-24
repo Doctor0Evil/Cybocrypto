@@ -3,7 +3,44 @@ use crate::chat_queue::AiChatQueue;
 use cybocrypto_aln_core::{AlnContext, ProgressStamp, AnchorToLedger};
 use cybocrypto_game_session::{GameState, SessionError, XrGameSession};
 use cybocrypto_neuro_identity::NeuroIdentity;
+use cybocrypto_aln_partition_derive::AlnPartition;
+
+use crate::chat::AiChatFrame;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, AlnPartition)]
+pub struct PhoenixOnChain {
+    #[aln(commit)]
+    pub xp: u64,
+
+    #[aln(commit)]
+    pub level: u32,
+
+    #[aln(commit)]
+    pub last_chat_seq: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, AlnPartition)]
+pub struct PhoenixClientLocal {
+    #[aln(local)]
+    pub camera_pos: (f32, f32, f32),
+
+    #[aln(local)]
+    pub fov_deg: f32,
+
+    #[aln(local)]
+    pub chat_ui_open: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, AlnPartition)]
+pub struct PhoenixEphemeral {
+    #[aln(ephemeral)]
+    pub temp_chat_buffer: Vec<AiChatFrame>,
+
+    #[aln(ephemeral)]
+    pub recent_actions: Vec<String>,
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionLogEntry {
