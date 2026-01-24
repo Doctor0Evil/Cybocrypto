@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "cybocrypto-aln-core",
+    "cybocrypto-neuro-identity",
+    "cybocrypto-game-session",
+    "cybocrypto-xr-dreamscape",
+]
+
+resolver = "2"
