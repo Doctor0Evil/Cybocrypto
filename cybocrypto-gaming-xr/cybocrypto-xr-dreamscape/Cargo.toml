@@ -10,3 +10,4 @@ serde_json = "1"
 cybocrypto-aln-core = { path = "../cybocrypto-aln-core" }
 cybocrypto-neuro-identity = { path = "../cybocrypto-neuro-identity" }
 cybocrypto-game-session = { path = "../cybocrypto-game-session" }
+cybocrypto-aln-partition-derive = { path = "../cybocrypto-aln-partition-derive" }
