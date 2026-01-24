@@ -1,0 +1,24 @@
+[package]
+name = "ac_research_harness"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Research harness for augmented-citizen pilots: latency, corridor proxies, and policy decision telemetry across pumps, pin-pads, and kiosks."
+repository = "https://github.com/Doctor0Evil/Cybocrypto"
+keywords = ["telemetry", "latency", "edge-ai", "payments", "augmented-citizen"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+telemetry-subscribers = "0.4"
+sysinfo = { version = "0.30", features = ["serde"] }
+
+[features]
+# For pilots that want to push telemetry to external backends via OpenTelemetry,
+# you can add "otel" later and wire exporters in a separate crate.
+default = []
