@@ -10,7 +10,7 @@
 //!
 //! This crate is intentionally storage-agnostic: it emits JSON records via
 //! `tracing` so you can:
-//! - Ship them to OpenTelemetry collectors / Prometheus / log files.
+//! - Ship them to OpenTelemetry collectors / Datadog / Prometheus / log files.
 //! - Or consume them directly in integration tests and offline analysis.
 //!
 //! Integration points:
@@ -19,6 +19,8 @@
 //!   `SessionTelemetry::record_round_trip(...)`.
 //! - Feed policy decisions into `record_policy_decision(...)`.
 //! - Optionally, periodically sample device metrics via `sample_device_metrics()`.
+//! - Call `init_telemetry_logging(...)` (and optionally `init_otel_pipeline(...)`)
+//!   once at process startup.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -26,6 +28,18 @@ use sysinfo::{CpuExt, System, SystemExt};
 use thiserror::Error;
 use tracing::{info, warn};
 use uuid::Uuid;
+
+#[cfg(feature = "otel")]
+use opentelemetry::{
+    global,
+    sdk::{
+        trace as sdktrace,
+        Resource,
+    },
+    KeyValue,
+};
+#[cfg(feature = "otel")]
+use opentelemetry_otlp::WithExportConfig;
 
 /// Terminal types covered by the harness.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,7 +111,7 @@ pub enum PaymentDecision {
 pub struct RoundTripMetrics {
     /// Unique session id this round trip belongs to.
     pub session_id: Uuid,
-    /// Monotonic epoch start for this round-trip.
+    /// Monotonic epoch start for this round-trip (wall-clock approximated).
     pub started_at: DateTime<Utc>,
     /// Duration in milliseconds from terminal prompt to final terminal decision.
     pub duration_ms: u64,
@@ -187,7 +201,11 @@ impl SessionTelemetry {
 
         // Emit a structured event for session start.
         let json = serde_json::to_string(&meta).unwrap_or_else(|_| "{}".to_string());
-        info!(target: "ac_research.session_start", session_id=%meta.session_id, %json);
+        info!(
+            target: "ac_research.session_start",
+            session_id = %meta.session_id,
+            %json
+        );
 
         SessionTelemetry {
             meta,
@@ -235,7 +253,7 @@ impl SessionTelemetry {
             .unwrap_or_else(|_| "{}".to_string());
         info!(
             target: "ac_research.round_trip",
-            session_id=%self.meta.session_id,
+            session_id = %self.meta.session_id,
             round_trip_index = self.round_trip_counter,
             duration_ms = metrics.duration_ms,
             success = metrics.success,
@@ -278,7 +296,7 @@ impl SessionTelemetry {
 
         info!(
             target: "ac_research.policy_decision",
-            session_id=%self.meta.session_id,
+            session_id = %self.meta.session_id,
             round_trip_index = self.round_trip_counter,
             payment_decision = ?telemetry.payment_decision,
             assistant_primary = ?telemetry.assistant_primary_channel,
@@ -346,10 +364,16 @@ pub fn sample_device_metrics(sys: &mut System) -> DeviceMetrics {
 /// Initialize a simple tracing subscriber suitable for pilots.
 ///
 /// This prints JSON lines to stdout and enables the targets used in this crate.
+/// You can ship these logs through your existing pipeline, or combine with
+/// OpenTelemetry when the `otel` feature is enabled.
 pub fn init_telemetry_logging(default_level: &str) {
     // Example: default_level = "info" or "debug"
-    let env_filter = std::env::var("RUST_LOG")
-        .unwrap_or_else(|_| format!("ac_research={level},ac_research_harness={level},info", level = default_level));
+    let env_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
+        format!(
+            "ac_research={level},ac_research_harness={level},info",
+            level = default_level
+        )
+    });
 
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(env_filter)
@@ -360,6 +384,38 @@ pub fn init_telemetry_logging(default_level: &str) {
     if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
         warn!("Failed to set global tracing subscriber: {}", e);
     }
+}
+
+/// Optional: initialize an OpenTelemetry pipeline for this process.
+///
+/// This follows the same general pattern as Datadog’s OTel guidance: you can
+/// point `OTEL_EXPORTER_OTLP_ENDPOINT` at a Datadog Agent or any OTLP collector,
+/// and use standard OTel env vars for service name and resource attributes.[attached_file:1]
+#[cfg(feature = "otel")]
+pub fn init_otel_pipeline(service_name: &str) {
+    // Build a Resource describing this service.
+    let mut resource = Resource::new(vec![KeyValue::new("service.name", service_name.to_string())]);
+
+    // Additional attributes from environment (e.g., deployment.environment, service.version)
+    // can be attached here if desired, similar to the Datadog example.
+    if let Ok(env) = std::env::var("DEPLOYMENT_ENVIRONMENT") {
+        resource = resource.merge(&Resource::new(vec![KeyValue::new(
+            "deployment.environment",
+            env,
+        )]));
+    }
+
+    // Configure OTLP exporter over gRPC, using OTEL_EXPORTER_OTLP_ENDPOINT.
+    let exporter = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(opentelemetry_otlp::new_exporter().tonic())
+        .with_trace_config(
+            sdktrace::Config::default().with_resource(resource),
+        )
+        .install_simple()
+        .expect("failed to initialize OTLP exporter");
+
+    global::set_tracer_provider(exporter);
 }
 
 #[cfg(test)]
