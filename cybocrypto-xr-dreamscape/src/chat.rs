@@ -10,17 +10,33 @@ pub enum ChatSpeaker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AiDecisionKind {
+    SuggestMove,
+    AutoMove,
+    DialogueChoice,
+    WorldEdit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiDecisionPayload {
+    pub kind: AiDecisionKind,
+    pub action_id: String,         // canonical action key in your game logic
+    pub parameters: serde_json::Value, // small JSON blob for args
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiChatFrame {
     pub speaker: ChatSpeaker,
-    pub identity_id: String,    // Bostrom/NeuroIdentity reference
-    pub realm: String,          // XR world instance
+    pub identity_id: String,
+    pub realm: String,
     pub message: String,
     pub timestamp_ms: u64,
-    pub correlation_id: String, // tie chat to game events
+    pub correlation_id: String,
+    pub decision: Option<AiDecisionPayload>, // optional AI decision
 }
 
 impl AiChatFrame {
-    pub fn new(
+    pub fn new_chat(
         speaker: ChatSpeaker,
         identity_id: impl Into<String>,
         realm: impl Into<String>,
@@ -37,6 +53,12 @@ impl AiChatFrame {
             message: message.into(),
             timestamp_ms: now.as_millis() as u64,
             correlation_id: correlation_id.into(),
+            decision: None,
         }
+    }
+
+    pub fn with_decision(mut self, payload: AiDecisionPayload) -> Self {
+        self.decision = Some(payload);
+        self
     }
 }
