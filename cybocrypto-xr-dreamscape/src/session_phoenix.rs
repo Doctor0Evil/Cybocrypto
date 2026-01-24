@@ -1,9 +1,17 @@
-use crate::chat::{AiChatFrame, ChatSpeaker};
+use crate::chat::{AiChatFrame, AiDecisionPayload, AiDecisionKind, ChatSpeaker};
 use crate::chat_queue::AiChatQueue;
-use cybocrypto_aln_core::{AlnContext, ProgressStamp};
+use cybocrypto_aln_core::{AlnContext, ProgressStamp, AnchorToLedger};
 use cybocrypto_game_session::{GameState, SessionError, XrGameSession};
 use cybocrypto_neuro_identity::NeuroIdentity;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionLogEntry {
+    pub seq: u64,
+    pub speaker: ChatSpeaker,
+    pub action_id: String,
+    pub kind: AiDecisionKind,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhoenixOnChain {
@@ -13,6 +21,8 @@ pub struct PhoenixOnChain {
     pub level: u32,
     #[aln(commit)]
     pub last_chat_seq: u64,
+    #[aln(commit)]
+    pub decision_log: Vec<DecisionLogEntry>, // compact commit-critical log
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +60,7 @@ impl PhoenixRuntime {
             xp: 0,
             level: 1,
             last_chat_seq: 0,
+            decision_log: Vec::new(),
         };
 
         let client_local = PhoenixClientLocal {
@@ -78,7 +89,7 @@ impl PhoenixRuntime {
 
     pub fn emit_player_chat(&mut self, message: &str) {
         let id = self.session.identity.bostrom_id.clone();
-        let frame = AiChatFrame::new(
+        let frame = AiChatFrame::new_chat(
             ChatSpeaker::Player,
             id,
             self.session.state.stamp.context.session_id.clone(),
@@ -89,21 +100,42 @@ impl PhoenixRuntime {
         self.session.state.on_chain.last_chat_seq = seq;
     }
 
-    /// To be called by your AI/chat layer: push AI messages into the queue.
-    pub fn emit_ai_chat(&mut self, message: &str) {
+    pub fn emit_ai_decision(
+        &mut self,
+        message: &str,
+        decision_kind: AiDecisionKind,
+        action_id: &str,
+        parameters: serde_json::Value,
+    ) {
         let id = self.session.identity.bostrom_id.clone();
-        let frame = AiChatFrame::new(
+        let payload = AiDecisionPayload {
+            kind: decision_kind.clone(),
+            action_id: action_id.to_string(),
+            parameters,
+        };
+        let frame = AiChatFrame::new_chat(
             ChatSpeaker::AiAgent,
             id,
             self.session.state.stamp.context.session_id.clone(),
             message.to_string(),
-            "ai-chat",
-        );
+            "ai-decision",
+        )
+        .with_decision(payload);
+
         let seq = self.chat_queue.push(frame);
+
+        // Record a compact log entry for commit/replay.
+        let entry = DecisionLogEntry {
+            seq,
+            speaker: ChatSpeaker::AiAgent,
+            action_id: action_id.to_string(),
+            kind: decision_kind,
+        };
+        self.session.state.on_chain.decision_log.push(entry);
+
         self.session.state.on_chain.last_chat_seq = seq;
     }
 
-    /// Process all queued frames into the ephemeral buffer (one game tick).
     pub fn flush_chat_to_state(&mut self) -> Result<(), SessionError> {
         let frames = self.chat_queue.pop_all();
         for frame in frames {
@@ -114,5 +146,12 @@ impl PhoenixRuntime {
                 .push(frame);
         }
         Ok(())
+    }
+
+    /// Example of committing state for later replay/anti-cheat.
+    pub fn commit_for_replay(&self) -> Result<String, String> {
+        let ctx: AlnContext =
+            cybocrypto_aln_core::new_gaming_context("phoenix-replay-commit");
+        self.session.state.commit_state(&ctx)
     }
 }
