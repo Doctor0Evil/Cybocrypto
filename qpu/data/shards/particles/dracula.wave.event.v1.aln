@@ -1,0 +1,32 @@
+aln dracula.wave.event.v1
+
+record DraculaWaveEventV1
+    string eventid
+    string hostid
+    string citizenid
+    string deviceid
+    string contextid
+
+    float psychrisk_scalar
+    string psychrisk_band          # LOW, MODERATE, HIGH
+
+    string mode                    # Idle, Active
+    float corridor_opacity         # 0.0–1.0
+    float corridor_loop_hz
+    float corridor_intensity_scale
+
+    float blood_current_tokens
+    float blood_min_floor
+    float blood_max_per_min
+    bool  blood_drain_allowed
+
+    float wave_issued_total        # lifetime issued this session
+    float wave_balance
+    float wave_spent_tick          # spent in this event window
+
+    string notes
+
+    string jurisdictiontags
+    string policytag               # e.g. BloodSafety, BioscaleUpgrade
+    string hexstamp_module         # DRACULA_WAVE_HOST_HEXSTAMP
+end
