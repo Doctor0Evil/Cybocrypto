@@ -1,0 +1,23 @@
+schema neurorights.envelope.v1
+  string envelope_id               # e.g. "neurorights.envelope.citizen.v1"
+  string host_did                  # DID or Bostrom address
+  string jurisdiction_id           # e.g. "PHX-US-AZ", "SCL-CL", "GVA-CH"
+  string roh_model_id              # links to RoH model shard
+  float  roh_ceiling               # must be <= 0.3 for normal mode
+  float  roh_research_ceiling      # optional research band, e.g. 0.45
+  float  max_brain_joules_day      # HostBudget/Joules ceiling
+  float  max_thermo_delta_c        # ThermodynamicEnvelope local ΔT ceiling
+  float  max_duty_cycle            # EnvelopePace duty fraction 0.0–1.0
+  float  max_cognitive_load        # normalized 0.0–1.0
+  float  max_mechanical_work       # DestrosclinEnvelope work ceiling
+  float  max_pain_index            # pain/inflammation scalar ceiling
+  float  max_fear_index            # fear/overload scalar ceiling
+  bool   rollback_anytime          # neurorights clause
+  bool   no_nonconsensual_mod      # neurorights clause
+  bool   no_raw_eeg_export         # neurorights clause
+  bool   no_inner_state_scoring    # neurorights clause
+  bool   non_exclusion_services    # neurorights clause
+  string evidence_bundle_id        # links to 10-hex evidence bundle
+  string created_at_iso
+  string updated_at_iso
+end
